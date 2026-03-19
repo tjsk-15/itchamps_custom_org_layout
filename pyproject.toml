@@ -6,7 +6,7 @@ authors = [
     {name = "ITChamps", email = "tjs.kutnikar@gmail.com"}
 ]
 requires-python = ">=3.10"
-dependencies = ["frappe"]
+dependencies = []
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]
