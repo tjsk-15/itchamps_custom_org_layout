@@ -1,0 +1,16 @@
+[project]
+name = "itchamps_custom_org_layout"
+version = "1.0.0"
+description = "Custom Org Chart with Department/Branch Grouping for ERPNext"
+authors = [
+    {name = "ITChamps", email = "tjs.kutnikar@gmail.com"}
+]
+requires-python = ">=3.10"
+dependencies = ["frappe"]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench]
+frappe-dependencies = ["hrms"]

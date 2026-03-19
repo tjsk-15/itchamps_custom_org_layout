@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include itchamps_custom_org_layout *.css
+recursive-include itchamps_custom_org_layout *.csv
+recursive-include itchamps_custom_org_layout *.html
+recursive-include itchamps_custom_org_layout *.ico
+recursive-include itchamps_custom_org_layout *.js
+recursive-include itchamps_custom_org_layout *.json
+recursive-include itchamps_custom_org_layout *.md
+recursive-include itchamps_custom_org_layout *.png
+recursive-include itchamps_custom_org_layout *.py
+recursive-include itchamps_custom_org_layout *.svg
+recursive-include itchamps_custom_org_layout *.txt
+recursive-exclude itchamps_custom_org_layout *.pyc
