@@ -5,26 +5,34 @@
 ## What This App Does
 
 Overrides HRMS Organizational Chart page with a **vertical indented tree**.
-Each employee = a card row. Reportees are indented below their manager with
-a left-border connector line. Cards show avatar, name, designation, department
-tag (colored), branch tag (gray). Managers have a collapse/expand ± button.
+Each employee = a card row. Reportees indented below manager with left-border
+connector line. Cards show avatar, name, designation, department tag (colored),
+branch tag (gray). Managers have collapse/expand ± button.
 
 **Filters:** Department + Branch dropdowns in toolbar. No search field.
 
-## CRITICAL NOTES
+## CRITICAL ARCHITECTURE NOTES
 
 1. **Styles are INLINE in JS** — injected via `<style id="itc-styles">`.
-   External CSS file is empty. Frappe Cloud wasn't loading it.
-2. **hooks.py uses `page_js` ONLY** — NOT `app_include_js`. Using both
-   caused double-execution and the second run wiped out toolbar fields.
-3. **Vertical layout, not horizontal tree** — With 84 employees and only 1
-   manager, a horizontal tree overflows. Vertical indented list fits all.
+   External CSS file is empty. Frappe Cloud wasn't serving it.
+
+2. **hooks.py uses `app_include_js` ONLY** — NOT `page_js`.
+   - `app_include_js` loads the script globally, so `on_page_load` is
+     registered BEFORE the page loads. Since our app loads after HRMS,
+     our handler overrides HRMS's.
+   - `page_js` runs AFTER the page has already loaded and `on_page_load`
+     has already fired, so our handler never executes.
+   - Do NOT use both — causes double execution and toolbar fields vanish.
+
+3. **Vertical layout, not horizontal tree** — 84 employees with only 1
+   manager means ~83 root nodes. Horizontal tree overflows. Vertical
+   indented list fits all employees without scrolling.
 
 ## Directory Structure
 
 ```
 itchamps_custom_org_layout/
-├── pyproject.toml                        ← setuptools
+├── pyproject.toml                        ← setuptools, no setup.py/cfg
 ├── MANIFEST.in / README.md / license.txt
 ├── itchamps_custom_org_layout/
 │   ├── __init__.py / hooks.py / modules.txt
@@ -35,13 +43,12 @@ itchamps_custom_org_layout/
 │   └── itchamps_custom_org_layout/__init__.py
 ```
 
-## hooks.py (IMPORTANT)
+## hooks.py
 
 ```python
-page_js = {"organizational-chart": "public/js/custom_org_chart.js"}
-page_css = {"organizational-chart": "public/css/custom_org_chart.css"}
+app_include_js = ["/assets/itchamps_custom_org_layout/js/custom_org_chart.js"]
 ```
-NO `app_include_js` or `app_include_css` — these caused double-loading.
+NO `page_js`, NO `app_include_css` (styles are in JS).
 
 ## API: `get_org_chart_data(company, department="", branch="")`
 
@@ -51,19 +58,18 @@ When filtered, walks up reports_to chain to keep tree connected.
 
 ## JS Architecture
 
-- IIFE, injects `<style>` on first run
-- `frappe.pages["organizational-chart"].on_page_load` → builds page + toolbar
+- IIFE, injects `<style id="itc-styles">` on first run
+- Sets `frappe.pages["organizational-chart"].on_page_load`
 - Toolbar: Company (Link), Department (Select), Branch (Select)
 - `doLoad()` → API call → `doRender()` builds tree from flat list
-- Tree: recursive `nodeH()` → `.itc-card` + `.itc-children` (indented div)
-- Collapse: `.itc-tog` button toggles `.itc-hidden` on `.itc-children`
+- Tree: recursive `nodeH()` → `.itc-card` + `.itc-children`
+- Collapse: `.itc-tog` toggles `.itc-hidden` on `.itc-children`
 - Click card → `frappe.set_route("app","employee", id)`
 
-## CSS Classes (in JS)
+## CSS Classes (all in JS string)
 
-- `.itc-card` — flex row card with left color bar
-- `.itc-children` — indented container with left border line
-- `.itc-av` — avatar circle, `.itc-name/.itc-desg` — text
-- `.itc-td` — department tag, `.itc-tb` — branch tag
-- `.itc-tog` — collapse/expand button
-- `.itc-hidden` — hides children
+- `.itc-card` — flex row, left color bar
+- `.itc-children` — indented container, left border line
+- `.itc-av` — avatar, `.itc-name/.itc-desg` — text
+- `.itc-td` — dept tag (colored), `.itc-tb` — branch tag (gray)
+- `.itc-tog` — expand/collapse button, `.itc-hidden` — hides children
