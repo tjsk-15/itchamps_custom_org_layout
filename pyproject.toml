@@ -6,6 +6,8 @@ authors = [
     {name = "ITChamps", email = "tjs.kutnikar@gmail.com"}
 ]
 requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
 dependencies = []
 
 [build-system]
