@@ -1,1 +1,0 @@
-# frappe is managed by bench, not pip
