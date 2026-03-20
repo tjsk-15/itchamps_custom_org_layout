@@ -6,22 +6,12 @@ app_email = "tjs.kutnikar@gmail.com"
 app_license = "MIT"
 required_apps = ["frappe", "erpnext", "hrms"]
 
-# --- Include custom JS/CSS in desk ---
-app_include_js = [
-    "/assets/itchamps_custom_org_layout/js/custom_org_chart.js"
-]
-
-app_include_css = [
-    "/assets/itchamps_custom_org_layout/css/custom_org_chart.css"
-]
-
-# --- Override the HRMS Organizational Chart page ---
+# Only load JS/CSS on the organizational chart page, not globally.
+# Using page_js/page_css ensures it loads once, on the right page.
 page_js = {
     "organizational-chart": "public/js/custom_org_chart.js"
 }
 
-# --- Fixtures (export any Custom Fields if needed) ---
-# fixtures = []
-
-# --- Patches ---
-# patches = []
+page_css = {
+    "organizational-chart": "public/css/custom_org_chart.css"
+}
