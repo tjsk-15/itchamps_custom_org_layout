@@ -1,5 +1,5 @@
 /* ============================================================
-   ITChamps Custom Org Layout — Modern Dashboard Org Chart
+   ITChamps Custom Org Layout — Department → Manager → Employees
    ============================================================ */
 
 /* ── Dashboard wrapper ── */
@@ -78,7 +78,7 @@
 /* ── Search ── */
 .itc-org-search-wrapper {
 	margin-bottom: 18px;
-	max-width: 360px;
+	max-width: 400px;
 }
 
 .itc-org-search {
@@ -111,57 +111,243 @@
 
 
 /* ============================================================
-   HIERARCHY / TREE VIEW
+   DEPARTMENT VIEW — Department → Manager → Employees
    ============================================================ */
 
-.itc-tree {
-	padding-left: 0;
+.itc-dept-view {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 }
 
-.itc-tree-node {
-	position: relative;
-	padding-left: 28px;
+/* ── Department section ── */
+.itc-dept-section {
+	border-radius: 12px;
+	overflow: hidden;
 }
 
-.itc-tree > .itc-tree-node {
-	padding-left: 0;
+/* ── Department header ── */
+.itc-dept-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 18px;
+	background: var(--card-bg, #fff);
+	border: 1px solid var(--border-color, #e2e8f0);
+	border-radius: 10px;
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.itc-tree-children {
-	padding-left: 20px;
-	border-left: 2px solid var(--border-color, #e2e8f0);
-	margin-left: 18px;
+.itc-dept-header:hover {
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.itc-dept-header-left {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.itc-dept-toggle {
+	font-size: 12px;
+	color: var(--text-muted, #718096);
+	transition: transform 0.2s ease;
+	flex-shrink: 0;
+}
+
+.itc-dept-toggle.itc-rotated {
+	transform: rotate(-90deg);
+}
+
+.itc-dept-icon {
+	width: 30px;
+	height: 30px;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.itc-dept-title {
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--text-color, #1a202c);
+}
+
+.itc-dept-count {
+	font-size: 12px;
+	color: var(--text-muted, #718096);
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+/* ── Department body (collapsible) ── */
+.itc-dept-body {
+	padding: 8px 0 0 0;
 	overflow: hidden;
 	transition: max-height 0.3s ease;
 }
 
-.itc-tree-children.itc-collapsed {
+.itc-dept-body.itc-collapsed {
 	display: none;
 }
 
-/* ── Node card (shared between tree and grouped) ── */
-.itc-node-card,
-.itc-group-card {
+/* ── Manager section ── */
+.itc-manager-section {
+	margin: 0 0 12px 20px;
+	position: relative;
+}
+
+.itc-manager-section::before {
+	content: "";
+	position: absolute;
+	left: -10px;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--border-color, #e2e8f0);
+	border-radius: 1px;
+}
+
+/* ── Manager card ── */
+.itc-manager-card {
 	display: flex;
 	align-items: center;
 	gap: 12px;
 	background: var(--card-bg, #fff);
 	border: 1px solid var(--border-color, #e2e8f0);
 	border-radius: 10px;
-	padding: 10px 14px;
-	margin: 6px 0;
+	padding: 12px 16px;
+	margin: 0 0 4px 0;
 	cursor: pointer;
 	position: relative;
 	overflow: hidden;
 	transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.itc-node-card:hover,
-.itc-group-card:hover {
+.itc-manager-card:hover {
 	transform: translateY(-1px);
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
 	border-color: var(--primary, #4C6EF5);
 }
+
+.itc-manager-toggle {
+	font-size: 11px;
+	color: var(--text-muted, #718096);
+	cursor: pointer;
+	transition: transform 0.2s ease;
+	user-select: none;
+	padding: 4px;
+	flex-shrink: 0;
+	min-width: 18px;
+	text-align: center;
+}
+
+.itc-manager-toggle.itc-rotated {
+	transform: rotate(-90deg);
+}
+
+.itc-manager-meta {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 4px;
+	margin-left: auto;
+	flex-shrink: 0;
+}
+
+.itc-manager-role-badge {
+	font-size: 10px;
+	font-weight: 600;
+	padding: 2px 10px;
+	border-radius: 20px;
+	letter-spacing: 0.3px;
+	white-space: nowrap;
+}
+
+.itc-report-count {
+	font-size: 10px;
+	color: var(--text-muted, #718096);
+	white-space: nowrap;
+}
+
+/* ── Employee cards (direct reports) ── */
+.itc-reports-list {
+	padding: 4px 0 4px 32px;
+	position: relative;
+	overflow: hidden;
+	transition: max-height 0.3s ease;
+}
+
+.itc-reports-list.itc-collapsed {
+	display: none;
+}
+
+.itc-reports-list::before {
+	content: "";
+	position: absolute;
+	left: 16px;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--border-color, #e2e8f0);
+	border-radius: 1px;
+}
+
+.itc-employee-card {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	background: var(--card-bg, #fff);
+	border: 1px solid var(--border-color, #e2e8f0);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin: 4px 0;
+	cursor: pointer;
+	position: relative;
+	overflow: hidden;
+	transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.itc-employee-card:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+	border-color: var(--primary, #4C6EF5);
+}
+
+/* ── Unmanaged section ── */
+.itc-unmanaged-section {
+	margin: 8px 0 12px 20px;
+}
+
+.itc-unmanaged-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	margin-bottom: 4px;
+}
+
+.itc-unmanaged-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted, #718096);
+	font-style: italic;
+}
+
+.itc-unmanaged-count {
+	font-size: 11px;
+	color: var(--text-light, #a0aec0);
+	background: var(--border-color, #e2e8f0);
+	padding: 1px 8px;
+	border-radius: 10px;
+}
+
+/* ── Shared card elements ── */
 
 /* Color bar on left */
 .itc-node-color-bar {
@@ -173,36 +359,21 @@
 	border-radius: 10px 0 0 10px;
 }
 
-/* Toggle arrow */
-.itc-node-toggle {
-	position: absolute;
-	right: 10px;
-	top: 50%;
-	transform: translateY(-50%);
-	font-size: 12px;
-	color: var(--text-muted, #718096);
-	cursor: pointer;
-	transition: transform 0.2s ease;
-	z-index: 2;
-	user-select: none;
-	padding: 4px;
-}
-
-.itc-node-toggle.itc-rotated {
-	transform: translateY(-50%) rotate(-90deg);
-}
-
 /* Avatar */
 .itc-node-avatar {
 	flex-shrink: 0;
-	width: 38px;
-	height: 38px;
+	width: 36px;
+	height: 36px;
 	border-radius: 50%;
 	overflow: hidden;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	margin-left: 6px;
+}
+
+.itc-avatar-manager {
+	width: 42px;
+	height: 42px;
 }
 
 .itc-avatar-img {
@@ -249,65 +420,19 @@
 	text-overflow: ellipsis;
 }
 
-.itc-node-reports-to {
-	font-size: 10px;
-	color: var(--text-light, #a0aec0);
-	margin-top: 2px;
-	font-style: italic;
-}
-
 .itc-node-badge {
 	display: inline-block;
 	font-size: 10px;
 	font-weight: 600;
 	padding: 2px 8px;
 	border-radius: 20px;
-	margin-top: 4px;
+	margin-top: 3px;
 	letter-spacing: 0.3px;
 }
 
-
-/* ============================================================
-   GROUPED VIEW
-   ============================================================ */
-
-.itc-grouped-view {
-	display: flex;
-	flex-direction: column;
-	gap: 24px;
-}
-
-.itc-group-section {
-	/* nothing extra needed */
-}
-
-.itc-group-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 10px 16px;
-	background: var(--card-bg, #fff);
-	border: 1px solid var(--border-color, #e2e8f0);
-	border-radius: 8px;
-	margin-bottom: 10px;
-}
-
-.itc-group-title {
-	font-size: 15px;
-	font-weight: 700;
-	color: var(--text-color, #1a202c);
-}
-
-.itc-group-count {
-	font-size: 12px;
-	color: var(--text-muted, #718096);
-	font-weight: 500;
-}
-
-.itc-group-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-	gap: 8px;
+.itc-branch-badge {
+	background: #f0f4ff;
+	color: #4C6EF5;
 }
 
 
@@ -329,12 +454,20 @@
 		font-size: 18px;
 	}
 
-	.itc-group-grid {
-		grid-template-columns: 1fr;
-	}
-
 	.itc-org-search-wrapper {
 		max-width: 100%;
+	}
+
+	.itc-manager-section {
+		margin-left: 10px;
+	}
+
+	.itc-reports-list {
+		padding-left: 16px;
+	}
+
+	.itc-manager-meta {
+		display: none;
 	}
 }
 
@@ -343,16 +476,16 @@
    DARK MODE SUPPORT (Frappe v15+ CSS vars)
    ============================================================ */
 
-[data-theme="dark"] .itc-node-card,
-[data-theme="dark"] .itc-group-card,
+[data-theme="dark"] .itc-manager-card,
+[data-theme="dark"] .itc-employee-card,
 [data-theme="dark"] .itc-stat-card,
-[data-theme="dark"] .itc-group-header {
+[data-theme="dark"] .itc-dept-header {
 	background: var(--card-bg, #1a1a2e);
 	border-color: var(--border-color, #2d2d44);
 }
 
-[data-theme="dark"] .itc-node-card:hover,
-[data-theme="dark"] .itc-group-card:hover {
+[data-theme="dark"] .itc-manager-card:hover,
+[data-theme="dark"] .itc-employee-card:hover {
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
@@ -360,4 +493,14 @@
 	background: var(--card-bg, #1a1a2e) !important;
 	border-color: var(--border-color, #2d2d44) !important;
 	color: var(--text-color, #e2e8f0) !important;
+}
+
+[data-theme="dark"] .itc-branch-badge {
+	background: rgba(76, 110, 245, 0.15);
+	color: #7b9cf5;
+}
+
+[data-theme="dark"] .itc-unmanaged-count {
+	background: var(--border-color, #2d2d44);
+	color: var(--text-muted, #718096);
 }

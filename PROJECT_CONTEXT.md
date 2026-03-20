@@ -7,12 +7,15 @@
 
 ## What This App Does
 
-A Frappe/ERPNext app that overrides the default HRMS Organizational Chart page with:
-- Group-by dropdown (Department / Branch / Hierarchy)
-- Color-coded nodes per group
-- Compact collapsible tree view
-- Modern dashboard with stats bar, search, and color legend
-- Dark mode support
+A Frappe/ERPNext app that overrides the default HRMS Organizational Chart page with a
+**Department → Manager → Employees** hierarchy, including:
+
+- **Hierarchy:** Departments as collapsible top-level sections, managers under each department with their direct reports nested below
+- **Filters:** Branch, Department, and Manager dropdown filters in the toolbar
+- **Color-coded departments:** Each department gets a unique color
+- **Search:** Real-time text search across employees, managers, departments
+- **Stats bar:** Total Employees, Departments, Branches, Managers
+- **Dark mode support**
 
 ## Tech Stack & Dependencies
 
@@ -39,10 +42,10 @@ itchamps_custom_org_layout/          ← Git repo root
 │   │   └── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── org_chart.py             ← Server API (get_org_chart_data, get_chart_filters)
+│   │   └── org_chart.py             ← Server API
 │   ├── public/
-│   │   ├── js/custom_org_chart.js   ← Client-side org chart (380 lines)
-│   │   └── css/custom_org_chart.css ← Styles (364 lines)
+│   │   ├── js/custom_org_chart.js   ← Client-side org chart
+│   │   └── css/custom_org_chart.css ← Styles
 │   └── itchamps_custom_org_layout/  ← Frappe "module" directory (CRITICAL)
 │       └── __init__.py              ← Must exist and be non-empty
 ```
@@ -61,30 +64,73 @@ itchamps_custom_org_layout/          ← Git repo root
 - `page_js`: overrides `organizational-chart` page
 - `required_apps`: frappe, erpnext, hrms
 
-### API Endpoints
-- `itchamps_custom_org_layout.api.org_chart.get_org_chart_data(company, group_by)`
-  - Returns `{employees: [...], stats: {...}}`
-- `itchamps_custom_org_layout.api.org_chart.get_chart_filters(company)`
-  - Returns `{departments: [...], branches: [...]}`
+### API Endpoint
+- `itchamps_custom_org_layout.api.org_chart.get_org_chart_data(company, branch, department, manager)`
+  - Args: company (required), branch/department/manager (optional filters)
+  - Returns:
+    ```json
+    {
+      "departments": [
+        {
+          "name": "Engineering",
+          "employee_count": 12,
+          "managers": [
+            {
+              "manager": { "name": "HR-EMP-001", "employee_name": "...", ... },
+              "reports": [ { "name": "HR-EMP-002", ... }, ... ]
+            }
+          ],
+          "unmanaged": [ { "name": "HR-EMP-010", ... } ]
+        }
+      ],
+      "stats": { "Total Employees": 50, "Departments": 5, "Branches": 3, "Managers": 8 },
+      "filters": {
+        "departments": ["Engineering", "Sales"],
+        "branches": ["Main", "Remote"],
+        "managers": [{"id": "HR-EMP-001", "name": "John Doe"}]
+      }
+    }
+    ```
+
+### JS Architecture (custom_org_chart.js)
+- Overrides `frappe.pages["organizational-chart"].on_page_load`
+- Toolbar: Company (Link), Branch (Select), Department (Select), Manager (Select)
+- Filter dropdowns are populated from API response `filters` object
+- Rendering: `render()` → iterates departments → `render_manager_card()` + `render_employee_card()`
+- Collapsible: Department headers and manager sections are independently collapsible
+- Search: `filter_nodes()` does real-time DOM-based text search
+
+### CSS Structure (custom_org_chart.css)
+- `.itc-dept-*` — department-level styles
+- `.itc-manager-*` — manager card and toggle styles
+- `.itc-employee-*` — employee card styles
+- `.itc-reports-list` — direct reports container (indented, with left-border line)
+- Dark mode via `[data-theme="dark"]` selectors
 
 ## Bugs Fixed (2026-03-20)
 
 ### 1. `No module named 'itchamps_custom_org_layout.itchamps_custom_org_layout'`
-**Root cause:** Two issues:
-1. `pyproject.toml` used `flit_core` build backend which didn't include sub-packages
-2. `setup.py` and `setup.cfg` conflicted with `pyproject.toml` — setuptools picked up `readme` and `license` from `setup.cfg` but `pyproject.toml` didn't declare them as `dynamic`, causing `AttributeError: 'NoneType' object has no attribute 'get'`
+**Root cause:** `pyproject.toml` used `flit_core` + conflicting `setup.py`/`setup.cfg`
+**Fix:** Switched to `setuptools`, removed `setup.py`/`setup.cfg`, added `readme`/`license` to `pyproject.toml`
 
-**Fix:**
-- Switched `pyproject.toml` to `setuptools` backend with explicit package discovery
-- Added `readme = "README.md"` and `license = "MIT"` directly in `pyproject.toml`
-- Deleted `setup.py` and `setup.cfg` (redundant, caused conflicts)
-- Ensured inner `__init__.py` is non-empty
+### 2. `AttributeError: 'NoneType' object has no attribute 'get'` during build
+**Root cause:** `setup.cfg` had `long_description = file: README.md` but `pyproject.toml` didn't declare `readme` as dynamic
+**Fix:** Added `readme = "README.md"` and `license = "MIT"` directly in `pyproject.toml`, deleted `setup.cfg`
+
+## Feature Changes (2026-03-20)
+
+### Reformat: Department → Manager → Employees hierarchy
+- **Old:** Flat hierarchy (reports_to tree) or flat grouped view (Department/Branch grid)
+- **New:** 3-level hierarchy: Department sections → Manager cards → Employee cards
+- **Filters:** Added Branch, Department, Manager dropdown filters (replace old Group By dropdown)
+- **Server-side:** API now returns pre-structured department→manager→reports data
+- **Unmanaged:** Employees without a manager shown in "No Manager Assigned" sub-section
 
 ## How to Deploy
 
 ```bash
 # Push changes to GitHub
-git add -A && git commit -m "Fix build config" && git push
+git add -A && git commit -m "Reformat org chart" && git push
 
 # On Frappe Cloud: trigger a rebuild/deploy from the dashboard
 # Or locally:

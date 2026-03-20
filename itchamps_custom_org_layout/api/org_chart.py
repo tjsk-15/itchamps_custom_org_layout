@@ -1,6 +1,7 @@
 """
 ITChamps Custom Org Layout — Server API
-Returns employee data for the org chart, with optional grouping by Department or Branch.
+Returns employee data structured as Department → Manager → Employees,
+with optional filtering by branch, department, and manager.
 """
 
 import frappe
@@ -8,22 +9,35 @@ from frappe import _
 
 
 @frappe.whitelist()
-def get_org_chart_data(company: str, group_by: str = "Hierarchy") -> dict:
+def get_org_chart_data(
+    company: str,
+    branch: str = "",
+    department: str = "",
+    manager: str = "",
+) -> dict:
     """
-    Fetch all active employees for the given company and return them
-    along with summary statistics.
+    Fetch active employees for the given company and return them
+    structured for Department → Manager → Employees hierarchy.
 
     Args:
         company: The company to filter by
-        group_by: One of "Hierarchy", "Department", or "Branch"
+        branch: Optional branch filter
+        department: Optional department filter
+        manager: Optional manager (reports_to) filter
 
     Returns:
-        dict with keys: employees (list), stats (dict)
+        dict with keys: departments (list of dept objects), stats (dict), filters (dict)
     """
     if not company:
         frappe.throw(_("Company is required"))
 
-    # ── Fetch employees ──
+    # ── Build filters ──
+    filters = {"company": company, "status": "Active"}
+    if branch:
+        filters["branch"] = branch
+    if department:
+        filters["department"] = department
+
     fields = [
         "name",
         "employee_name",
@@ -38,64 +52,167 @@ def get_org_chart_data(company: str, group_by: str = "Hierarchy") -> dict:
 
     employees = frappe.get_all(
         "Employee",
-        filters={"company": company, "status": "Active"},
+        filters=filters,
         fields=fields,
         order_by="employee_name asc",
-        limit_page_length=0,  # return all
+        limit_page_length=0,
     )
 
-    # ── Enrich with reports_to name ──
-    emp_map = {e.name: e.employee_name for e in employees}
+    # ── Build employee map ──
+    emp_map = {e.name: e for e in employees}
+
+    # ── If manager filter is set, keep only that manager's direct reports + the manager ──
+    if manager:
+        filtered = [e for e in employees if e.reports_to == manager or e.name == manager]
+        employees = filtered
+
+    # ── Identify managers: employees who have at least one direct report ──
+    manager_ids = set()
     for emp in employees:
-        emp["reports_to_name"] = emp_map.get(emp.get("reports_to"), "")
+        if emp.reports_to and emp.reports_to in emp_map:
+            manager_ids.add(emp.reports_to)
 
-    # ── Build stats ──
-    stats = _build_stats(employees, group_by)
+    # ── Group: Department → Manager → Employees ──
+    dept_tree = {}
+    unmanaged = {}  # employees with no manager
 
-    return {"employees": employees, "stats": stats}
+    for emp in employees:
+        dept_name = emp.department or "Unassigned"
+
+        if dept_name not in dept_tree:
+            dept_tree[dept_name] = {}
+
+        if emp.name in manager_ids:
+            # This person is a manager — ensure they have a slot
+            if emp.name not in dept_tree[dept_name]:
+                dept_tree[dept_name][emp.name] = {
+                    "manager": emp,
+                    "reports": [],
+                }
+            else:
+                dept_tree[dept_name][emp.name]["manager"] = emp
+
+        if emp.reports_to and emp.reports_to in emp_map:
+            mgr = emp_map[emp.reports_to]
+            mgr_dept = mgr.department or "Unassigned"
+            if mgr_dept not in dept_tree:
+                dept_tree[mgr_dept] = {}
+            if emp.reports_to not in dept_tree[mgr_dept]:
+                dept_tree[mgr_dept][emp.reports_to] = {
+                    "manager": mgr,
+                    "reports": [],
+                }
+            # Don't add the manager as their own report
+            if emp.name != emp.reports_to:
+                dept_tree[mgr_dept][emp.reports_to]["reports"].append(emp)
+        elif emp.name not in manager_ids:
+            # No manager and not a manager themselves
+            if dept_name not in unmanaged:
+                unmanaged[dept_name] = []
+            unmanaged[dept_name].append(emp)
+
+    # ── Build structured output ──
+    departments_out = []
+    all_dept_names = sorted(
+        set(list(dept_tree.keys()) + list(unmanaged.keys())),
+        key=lambda x: (x == "Unassigned", x),
+    )
+
+    for dept_name in all_dept_names:
+        managers_list = []
+
+        # Managers with their reports
+        if dept_name in dept_tree:
+            for mgr_id, data in sorted(
+                dept_tree[dept_name].items(),
+                key=lambda x: x[1]["manager"].employee_name,
+            ):
+                mgr = data["manager"]
+                reports = sorted(data["reports"], key=lambda e: e.employee_name)
+                managers_list.append({
+                    "manager": _serialize_emp(mgr, emp_map),
+                    "reports": [_serialize_emp(r, emp_map) for r in reports],
+                })
+
+        # Unmanaged employees
+        unmanaged_list = []
+        if dept_name in unmanaged:
+            unmanaged_list = [
+                _serialize_emp(e, emp_map)
+                for e in sorted(unmanaged[dept_name], key=lambda e: e.employee_name)
+            ]
+
+        emp_count = sum(
+            1 + len(m["reports"]) for m in managers_list
+        ) + len(unmanaged_list)
+
+        departments_out.append({
+            "name": dept_name,
+            "managers": managers_list,
+            "unmanaged": unmanaged_list,
+            "employee_count": emp_count,
+        })
+
+    # ── Stats ──
+    all_employees = frappe.get_all(
+        "Employee",
+        filters={"company": company, "status": "Active"},
+        fields=["name", "department", "branch", "designation", "reports_to"],
+        limit_page_length=0,
+    )
+    stats = _build_stats(all_employees)
+
+    # ── Available filter values ──
+    available_filters = _get_filters(company, all_employees)
+
+    return {
+        "departments": departments_out,
+        "stats": stats,
+        "filters": available_filters,
+    }
 
 
-def _build_stats(employees: list, group_by: str) -> dict:
-    """Build summary statistics for the stats bar."""
-    stats = {"Total Employees": len(employees)}
+def _serialize_emp(emp, emp_map) -> dict:
+    """Convert employee record to a clean dict for the frontend."""
+    reports_to_name = ""
+    if emp.get("reports_to") and emp.reports_to in emp_map:
+        reports_to_name = emp_map[emp.reports_to].employee_name
+    return {
+        "name": emp.name,
+        "employee_name": emp.employee_name,
+        "designation": emp.designation or "",
+        "department": emp.department or "",
+        "branch": emp.branch or "",
+        "reports_to": emp.reports_to or "",
+        "reports_to_name": reports_to_name,
+        "image": emp.image or "",
+    }
 
+
+def _build_stats(employees: list) -> dict:
+    """Build summary statistics."""
     departments = set()
     branches = set()
-    designations = set()
+    managers = set()
 
     for emp in employees:
         if emp.get("department"):
             departments.add(emp["department"])
         if emp.get("branch"):
             branches.add(emp["branch"])
-        if emp.get("designation"):
-            designations.add(emp["designation"])
+        if emp.get("reports_to"):
+            managers.add(emp["reports_to"])
 
-    stats["Departments"] = len(departments)
-    stats["Branches"] = len(branches)
-    stats["Designations"] = len(designations)
-
-    if group_by == "Department":
-        stats["Groups Shown"] = len(departments) + (
-            1 if any(not e.get("department") for e in employees) else 0
-        )
-    elif group_by == "Branch":
-        stats["Groups Shown"] = len(branches) + (
-            1 if any(not e.get("branch") for e in employees) else 0
-        )
-
-    return stats
+    return {
+        "Total Employees": len(employees),
+        "Departments": len(departments),
+        "Branches": len(branches),
+        "Managers": len(managers),
+    }
 
 
-@frappe.whitelist()
-def get_chart_filters(company: str) -> dict:
-    """
-    Return available departments and branches for the given company.
-    Useful for advanced filtering in future versions.
-    """
-    if not company:
-        return {"departments": [], "branches": []}
-
+def _get_filters(company: str, employees: list) -> dict:
+    """Return available filter options for the company."""
     departments = frappe.get_all(
         "Department",
         filters={"company": company, "disabled": 0},
@@ -111,7 +228,27 @@ def get_chart_filters(company: str) -> dict:
         limit_page_length=0,
     )
 
+    # Managers: employees who have at least one direct report
+    manager_ids = set()
+    for emp in employees:
+        if emp.get("reports_to"):
+            manager_ids.add(emp["reports_to"])
+
+    manager_names = []
+    if manager_ids:
+        manager_records = frappe.get_all(
+            "Employee",
+            filters={"name": ("in", list(manager_ids)), "status": "Active"},
+            fields=["name", "employee_name"],
+            order_by="employee_name asc",
+            limit_page_length=0,
+        )
+        manager_names = [
+            {"id": m.name, "name": m.employee_name} for m in manager_records
+        ]
+
     return {
         "departments": [d.name for d in departments],
         "branches": [b.name for b in branches],
+        "managers": manager_names,
     }

@@ -1,16 +1,14 @@
 /**
  * ITChamps Custom Org Layout
- * Overrides the default HRMS Organizational Chart page with:
- *   - Group-by dropdown (Department / Branch / Hierarchy)
- *   - Color-coded nodes per group
- *   - Compact tree view
- *   - Modern dashboard styling with search, legend, stats
+ * Hierarchy: Department → Manager → Employees
+ * Filters: Branch, Department, Manager
+ * Features: color-coded departments, collapsible sections, search, stats, dark mode
  */
 
 frappe.provide("itchamps_org_chart");
 
 // ──────────────────────────────────────────────
-// COLOR PALETTE — up to 20 distinct group colors
+// COLOR PALETTE — up to 20 distinct department colors
 // ──────────────────────────────────────────────
 itchamps_org_chart.COLORS = [
 	"#4C6EF5", "#F76707", "#0CA678", "#E64980", "#7950F2",
@@ -22,18 +20,18 @@ itchamps_org_chart.COLORS = [
 itchamps_org_chart.color_map = {};
 itchamps_org_chart.color_index = 0;
 
-itchamps_org_chart.get_color = function (group_name) {
-	if (!group_name) return "#868E96";
-	if (!itchamps_org_chart.color_map[group_name]) {
-		itchamps_org_chart.color_map[group_name] =
+itchamps_org_chart.get_color = function (dept_name) {
+	if (!dept_name || dept_name === "Unassigned") return "#868E96";
+	if (!itchamps_org_chart.color_map[dept_name]) {
+		itchamps_org_chart.color_map[dept_name] =
 			itchamps_org_chart.COLORS[itchamps_org_chart.color_index % itchamps_org_chart.COLORS.length];
 		itchamps_org_chart.color_index++;
 	}
-	return itchamps_org_chart.color_map[group_name];
+	return itchamps_org_chart.color_map[dept_name];
 };
 
 // ──────────────────────────────────────────────
-// MAIN PAGE SETUP — runs when the page loads
+// MAIN PAGE SETUP
 // ──────────────────────────────────────────────
 frappe.pages["organizational-chart"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -44,17 +42,17 @@ frappe.pages["organizational-chart"].on_page_load = function (wrapper) {
 
 	wrapper.org_chart_page = page;
 
-	// Build the toolbar
+	// Build toolbar with filters
 	itchamps_org_chart.setup_toolbar(page);
 
-	// Build the main container
+	// Build main container
 	$(page.body).html(`
 		<div class="itc-org-dashboard">
 			<div class="itc-org-stats-bar" id="itc-stats-bar"></div>
 			<div class="itc-org-legend" id="itc-legend"></div>
 			<div class="itc-org-search-wrapper">
 				<input type="text" class="form-control itc-org-search"
-					   id="itc-search" placeholder="${__("Search employees...")}">
+					   id="itc-search" placeholder="${__("Search employees, managers, departments...")}">
 			</div>
 			<div class="itc-org-chart-container" id="itc-chart-container">
 				<div class="itc-loading">
@@ -74,14 +72,13 @@ frappe.pages["organizational-chart"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["organizational-chart"].on_page_show = function (wrapper) {
-	// Refresh when navigating back to the page
-	if (wrapper.org_chart_page && wrapper.org_chart_page._group_by) {
+	if (wrapper.org_chart_page) {
 		itchamps_org_chart.load_chart(wrapper.org_chart_page);
 	}
 };
 
 // ──────────────────────────────────────────────
-// TOOLBAR — company selector + group-by dropdown
+// TOOLBAR — Company + Filter dropdowns
 // ──────────────────────────────────────────────
 itchamps_org_chart.setup_toolbar = function (page) {
 	// Company selector
@@ -93,25 +90,83 @@ itchamps_org_chart.setup_toolbar = function (page) {
 		default: frappe.defaults.get_default("company"),
 		reqd: 1,
 		change: function () {
+			// Reset filters when company changes
+			itchamps_org_chart.reset_filters(page);
 			itchamps_org_chart.load_chart(page);
 		},
 	});
 
-	// Group-by dropdown
-	page.group_by_field = page.add_field({
-		fieldname: "group_by",
-		label: __("Group By"),
+	// Branch filter
+	page.branch_field = page.add_field({
+		fieldname: "branch",
+		label: __("Branch"),
 		fieldtype: "Select",
-		options: [
-			__("Hierarchy"),
-			__("Department"),
-			__("Branch"),
-		].join("\n"),
-		default: __("Hierarchy"),
+		options: [__("All Branches")].join("\n"),
+		default: __("All Branches"),
 		change: function () {
 			itchamps_org_chart.load_chart(page);
 		},
 	});
+
+	// Department filter
+	page.department_field = page.add_field({
+		fieldname: "department",
+		label: __("Department"),
+		fieldtype: "Select",
+		options: [__("All Departments")].join("\n"),
+		default: __("All Departments"),
+		change: function () {
+			itchamps_org_chart.load_chart(page);
+		},
+	});
+
+	// Manager filter
+	page.manager_field = page.add_field({
+		fieldname: "manager",
+		label: __("Manager"),
+		fieldtype: "Select",
+		options: [__("All Managers")].join("\n"),
+		default: __("All Managers"),
+		change: function () {
+			itchamps_org_chart.load_chart(page);
+		},
+	});
+};
+
+itchamps_org_chart.reset_filters = function (page) {
+	if (page.branch_field) page.branch_field.set_value(__("All Branches"));
+	if (page.department_field) page.department_field.set_value(__("All Departments"));
+	if (page.manager_field) page.manager_field.set_value(__("All Managers"));
+};
+
+itchamps_org_chart.update_filter_options = function (page, filters) {
+	if (!filters) return;
+
+	// Branch options
+	if (page.branch_field && filters.branches) {
+		let branch_opts = [__("All Branches")].concat(filters.branches);
+		page.branch_field.df.options = branch_opts.join("\n");
+		page.branch_field.refresh();
+	}
+
+	// Department options
+	if (page.department_field && filters.departments) {
+		let dept_opts = [__("All Departments")].concat(filters.departments);
+		page.department_field.df.options = dept_opts.join("\n");
+		page.department_field.refresh();
+	}
+
+	// Manager options
+	if (page.manager_field && filters.managers) {
+		let mgr_opts = [__("All Managers")];
+		itchamps_org_chart._manager_map = {};
+		filters.managers.forEach(function (m) {
+			mgr_opts.push(m.name + " (" + m.id + ")");
+			itchamps_org_chart._manager_map[m.name + " (" + m.id + ")"] = m.id;
+		});
+		page.manager_field.df.options = mgr_opts.join("\n");
+		page.manager_field.refresh();
+	}
 };
 
 // ──────────────────────────────────────────────
@@ -120,7 +175,6 @@ itchamps_org_chart.setup_toolbar = function (page) {
 itchamps_org_chart.load_chart = function (page) {
 	const company = page.company_field?.get_value() ||
 					frappe.defaults.get_default("company");
-	const group_by = page.group_by_field?.get_value() || "Hierarchy";
 
 	if (!company) {
 		$("#itc-chart-container").html(
@@ -129,9 +183,21 @@ itchamps_org_chart.load_chart = function (page) {
 		return;
 	}
 
-	page._group_by = group_by;
+	// Read filter values
+	let branch = page.branch_field?.get_value() || "";
+	let department = page.department_field?.get_value() || "";
+	let manager = page.manager_field?.get_value() || "";
 
-	// Reset color map on reload
+	// Convert "All X" back to empty
+	if (branch === __("All Branches")) branch = "";
+	if (department === __("All Departments")) department = "";
+	if (manager === __("All Managers")) {
+		manager = "";
+	} else if (itchamps_org_chart._manager_map && itchamps_org_chart._manager_map[manager]) {
+		manager = itchamps_org_chart._manager_map[manager];
+	}
+
+	// Reset colors
 	itchamps_org_chart.color_map = {};
 	itchamps_org_chart.color_index = 0;
 
@@ -141,10 +207,16 @@ itchamps_org_chart.load_chart = function (page) {
 
 	frappe.call({
 		method: "itchamps_custom_org_layout.api.org_chart.get_org_chart_data",
-		args: { company: company, group_by: group_by },
+		args: {
+			company: company,
+			branch: branch,
+			department: department,
+			manager: manager,
+		},
 		callback: function (r) {
 			if (r.message) {
-				itchamps_org_chart.render(r.message, group_by);
+				itchamps_org_chart.update_filter_options(page, r.message.filters);
+				itchamps_org_chart.render(r.message);
 			}
 		},
 		error: function () {
@@ -156,12 +228,12 @@ itchamps_org_chart.load_chart = function (page) {
 };
 
 // ──────────────────────────────────────────────
-// RENDERING
+// RENDERING — Department → Manager → Employees
 // ──────────────────────────────────────────────
-itchamps_org_chart.render = function (data, group_by) {
-	const { employees, stats } = data;
+itchamps_org_chart.render = function (data) {
+	const { departments, stats } = data;
 
-	if (!employees || employees.length === 0) {
+	if (!departments || departments.length === 0) {
 		$("#itc-chart-container").html(
 			`<div class="itc-empty-state">${__("No employees found")}</div>`
 		);
@@ -170,17 +242,127 @@ itchamps_org_chart.render = function (data, group_by) {
 		return;
 	}
 
-	// ── Stats bar ──
+	// Stats bar
 	itchamps_org_chart.render_stats(stats);
 
-	if (group_by === "Hierarchy") {
-		itchamps_org_chart.render_hierarchy(employees);
-	} else {
-		itchamps_org_chart.render_grouped(employees, group_by);
-	}
+	// Render departments
+	let html = '<div class="itc-dept-view">';
 
-	// ── Legend ──
+	departments.forEach(function (dept) {
+		const color = itchamps_org_chart.get_color(dept.name);
+
+		html += `<div class="itc-dept-section" data-department="${frappe.utils.escape_html(dept.name)}">`;
+
+		// Department header (collapsible)
+		html += `<div class="itc-dept-header" style="border-left: 4px solid ${color}">
+			<div class="itc-dept-header-left">
+				<span class="itc-dept-toggle">&#9662;</span>
+				<span class="itc-dept-icon" style="background: ${color}20; color: ${color}">
+					&#9733;
+				</span>
+				<span class="itc-dept-title">${frappe.utils.escape_html(dept.name)}</span>
+			</div>
+			<span class="itc-dept-count">${dept.employee_count} ${__("employees")}</span>
+		</div>`;
+
+		html += '<div class="itc-dept-body">';
+
+		// Managers and their reports
+		dept.managers.forEach(function (mgr_group) {
+			const mgr = mgr_group.manager;
+			const reports = mgr_group.reports;
+
+			html += '<div class="itc-manager-section">';
+
+			// Manager card
+			html += itchamps_org_chart.render_manager_card(mgr, color, reports.length);
+
+			// Direct reports
+			if (reports.length > 0) {
+				html += '<div class="itc-reports-list">';
+				reports.forEach(function (emp) {
+					html += itchamps_org_chart.render_employee_card(emp, color);
+				});
+				html += '</div>';
+			}
+
+			html += '</div>';
+		});
+
+		// Unmanaged employees
+		if (dept.unmanaged && dept.unmanaged.length > 0) {
+			html += `<div class="itc-unmanaged-section">
+				<div class="itc-unmanaged-header">
+					<span class="itc-unmanaged-label">${__("No Manager Assigned")}</span>
+					<span class="itc-unmanaged-count">${dept.unmanaged.length}</span>
+				</div>
+				<div class="itc-reports-list">`;
+
+			dept.unmanaged.forEach(function (emp) {
+				html += itchamps_org_chart.render_employee_card(emp, color);
+			});
+
+			html += '</div></div>';
+		}
+
+		html += '</div></div>';
+	});
+
+	html += '</div>';
+	$("#itc-chart-container").html(html);
+
+	// Legend
 	itchamps_org_chart.render_legend();
+
+	// Bind events
+	itchamps_org_chart.bind_events();
+};
+
+// ── Manager card ──
+itchamps_org_chart.render_manager_card = function (mgr, color, report_count) {
+	const abbr = itchamps_org_chart.get_abbr(mgr.employee_name);
+	const image_html = mgr.image
+		? `<img class="itc-avatar-img" src="${mgr.image}" alt="${frappe.utils.escape_html(mgr.employee_name)}">`
+		: `<span class="itc-avatar-abbr" style="background:${color}">${abbr}</span>`;
+
+	return `<div class="itc-manager-card" data-employee="${mgr.name}"
+				 data-name="${frappe.utils.escape_html(mgr.employee_name)}"
+				 data-department="${frappe.utils.escape_html(mgr.department)}">
+		<div class="itc-node-color-bar" style="background:${color}"></div>
+		<div class="itc-manager-toggle">${report_count > 0 ? '&#9662;' : ''}</div>
+		<div class="itc-node-avatar itc-avatar-manager">${image_html}</div>
+		<div class="itc-node-info">
+			<div class="itc-node-name">${frappe.utils.escape_html(mgr.employee_name)}</div>
+			<div class="itc-node-designation">${frappe.utils.escape_html(mgr.designation)}</div>
+			${mgr.branch ? `<span class="itc-node-badge itc-branch-badge">${frappe.utils.escape_html(mgr.branch)}</span>` : ''}
+		</div>
+		<div class="itc-manager-meta">
+			<span class="itc-manager-role-badge" style="background:${color}15; color:${color}; border: 1px solid ${color}40">
+				${__("Manager")}
+			</span>
+			${report_count > 0 ? `<span class="itc-report-count">${report_count} ${__("reports")}</span>` : ''}
+		</div>
+	</div>`;
+};
+
+// ── Employee card ──
+itchamps_org_chart.render_employee_card = function (emp, color) {
+	const abbr = itchamps_org_chart.get_abbr(emp.employee_name);
+	const image_html = emp.image
+		? `<img class="itc-avatar-img" src="${emp.image}" alt="${frappe.utils.escape_html(emp.employee_name)}">`
+		: `<span class="itc-avatar-abbr" style="background:${color}90">${abbr}</span>`;
+
+	return `<div class="itc-employee-card" data-employee="${emp.name}"
+				 data-name="${frappe.utils.escape_html(emp.employee_name)}"
+				 data-department="${frappe.utils.escape_html(emp.department)}">
+		<div class="itc-node-color-bar" style="background:${color}80"></div>
+		<div class="itc-node-avatar">${image_html}</div>
+		<div class="itc-node-info">
+			<div class="itc-node-name">${frappe.utils.escape_html(emp.employee_name)}</div>
+			<div class="itc-node-designation">${frappe.utils.escape_html(emp.designation)}</div>
+			${emp.branch ? `<span class="itc-node-badge itc-branch-badge">${frappe.utils.escape_html(emp.branch)}</span>` : ''}
+		</div>
+	</div>`;
 };
 
 // ── Stats bar ──
@@ -209,134 +391,28 @@ itchamps_org_chart.render_legend = function () {
 };
 
 // ──────────────────────────────────────────────
-// HIERARCHY VIEW (tree)
+// EVENT BINDINGS
 // ──────────────────────────────────────────────
-itchamps_org_chart.render_hierarchy = function (employees) {
-	// Build a lookup
-	const map = {};
-	employees.forEach(e => { map[e.name] = { ...e, children: [] }; });
-	const roots = [];
-	employees.forEach(e => {
-		if (e.reports_to && map[e.reports_to]) {
-			map[e.reports_to].children.push(map[e.name]);
-		} else {
-			roots.push(map[e.name]);
-		}
+itchamps_org_chart.bind_events = function () {
+	// Department header collapse/expand
+	$(".itc-dept-header").on("click", function () {
+		const $body = $(this).siblings(".itc-dept-body");
+		$body.toggleClass("itc-collapsed");
+		$(this).find(".itc-dept-toggle").toggleClass("itc-rotated");
 	});
 
-	let html = '<div class="itc-tree">';
-	roots.forEach(root => {
-		html += itchamps_org_chart.render_tree_node(root);
-	});
-	html += "</div>";
-	$("#itc-chart-container").html(html);
-
-	// Bind expand/collapse
-	$(".itc-node-toggle").on("click", function (e) {
+	// Manager section collapse/expand
+	$(".itc-manager-toggle").on("click", function (e) {
 		e.stopPropagation();
-		const $children = $(this).closest(".itc-tree-node").children(".itc-tree-children");
-		$children.toggleClass("itc-collapsed");
+		const $reports = $(this).closest(".itc-manager-card").siblings(".itc-reports-list");
+		$reports.toggleClass("itc-collapsed");
 		$(this).toggleClass("itc-rotated");
 	});
 
-	// Bind card click to open employee
-	$(".itc-node-card").on("click", function () {
-		const emp_id = $(this).data("employee");
-		if (emp_id) frappe.set_route("app", "employee", emp_id);
-	});
-};
-
-itchamps_org_chart.render_tree_node = function (node) {
-	const group_name = node.department || node.branch || "Unassigned";
-	const color = itchamps_org_chart.get_color(group_name);
-	const has_children = node.children && node.children.length > 0;
-	const abbr = itchamps_org_chart.get_abbr(node.employee_name);
-	const image_html = node.image
-		? `<img class="itc-avatar-img" src="${node.image}" alt="${frappe.utils.escape_html(node.employee_name)}">`
-		: `<span class="itc-avatar-abbr" style="background:${color}">${abbr}</span>`;
-
-	let html = `<div class="itc-tree-node">
-		<div class="itc-node-card" data-employee="${node.name}" data-group="${frappe.utils.escape_html(group_name)}">
-			<div class="itc-node-color-bar" style="background:${color}"></div>
-			${has_children ? '<span class="itc-node-toggle">&#9662;</span>' : ""}
-			<div class="itc-node-avatar">${image_html}</div>
-			<div class="itc-node-info">
-				<div class="itc-node-name">${frappe.utils.escape_html(node.employee_name)}</div>
-				<div class="itc-node-designation">${frappe.utils.escape_html(node.designation || "")}</div>
-				<span class="itc-node-badge" style="background:${color}20; color:${color}">
-					${frappe.utils.escape_html(group_name)}
-				</span>
-			</div>
-		</div>`;
-
-	if (has_children) {
-		html += '<div class="itc-tree-children">';
-		node.children.forEach(child => {
-			html += itchamps_org_chart.render_tree_node(child);
-		});
-		html += "</div>";
-	}
-
-	html += "</div>";
-	return html;
-};
-
-// ──────────────────────────────────────────────
-// GROUPED VIEW (by Department or Branch)
-// ──────────────────────────────────────────────
-itchamps_org_chart.render_grouped = function (employees, group_by) {
-	const field = group_by === "Department" ? "department" : "branch";
-	const groups = {};
-
-	employees.forEach(emp => {
-		const key = emp[field] || "Unassigned";
-		if (!groups[key]) groups[key] = [];
-		groups[key].push(emp);
-	});
-
-	// Sort groups alphabetically
-	const sorted_keys = Object.keys(groups).sort((a, b) =>
-		a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b)
-	);
-
-	let html = '<div class="itc-grouped-view">';
-
-	sorted_keys.forEach(group_name => {
-		const color = itchamps_org_chart.get_color(group_name);
-		const members = groups[group_name];
-
-		html += `<div class="itc-group-section">
-			<div class="itc-group-header" style="border-left: 4px solid ${color}">
-				<span class="itc-group-title">${frappe.utils.escape_html(group_name)}</span>
-				<span class="itc-group-count">${members.length} ${__("employees")}</span>
-			</div>
-			<div class="itc-group-grid">`;
-
-		members.forEach(emp => {
-			const abbr = itchamps_org_chart.get_abbr(emp.employee_name);
-			const image_html = emp.image
-				? `<img class="itc-avatar-img" src="${emp.image}" alt="${frappe.utils.escape_html(emp.employee_name)}">`
-				: `<span class="itc-avatar-abbr" style="background:${color}">${abbr}</span>`;
-
-			html += `<div class="itc-group-card" data-employee="${emp.name}" data-group="${frappe.utils.escape_html(group_name)}">
-				<div class="itc-node-color-bar" style="background:${color}"></div>
-				<div class="itc-node-avatar">${image_html}</div>
-				<div class="itc-node-info">
-					<div class="itc-node-name">${frappe.utils.escape_html(emp.employee_name)}</div>
-					<div class="itc-node-designation">${frappe.utils.escape_html(emp.designation || "")}</div>
-					${emp.reports_to_name ? `<div class="itc-node-reports-to">${__("Reports to")}: ${frappe.utils.escape_html(emp.reports_to_name)}</div>` : ""}
-				</div>
-			</div>`;
-		});
-
-		html += `</div></div>`;
-	});
-
-	html += "</div>";
-	$("#itc-chart-container").html(html);
-
-	// Bind card click
-	$(".itc-group-card").on("click", function () {
+	// Click card to open employee
+	$(".itc-manager-card, .itc-employee-card").on("click", function (e) {
+		// Don't navigate if clicking the toggle
+		if ($(e.target).hasClass("itc-manager-toggle")) return;
 		const emp_id = $(this).data("employee");
 		if (emp_id) frappe.set_route("app", "employee", emp_id);
 	});
@@ -347,32 +423,53 @@ itchamps_org_chart.render_grouped = function (employees, group_by) {
 // ──────────────────────────────────────────────
 itchamps_org_chart.filter_nodes = function (query) {
 	query = (query || "").toLowerCase().trim();
+
 	if (!query) {
-		$(".itc-node-card, .itc-group-card, .itc-tree-node, .itc-group-section").show();
+		// Show everything, uncollapse
+		$(".itc-dept-section, .itc-manager-section, .itc-manager-card, .itc-employee-card, .itc-unmanaged-section").show();
+		$(".itc-dept-body, .itc-reports-list").removeClass("itc-collapsed");
+		$(".itc-dept-toggle, .itc-manager-toggle").removeClass("itc-rotated");
 		return;
 	}
 
-	// Grouped view
-	$(".itc-group-card").each(function () {
+	// Filter employee cards
+	$(".itc-employee-card").each(function () {
 		const text = $(this).text().toLowerCase();
 		$(this).toggle(text.includes(query));
 	});
-	// Hide empty groups
-	$(".itc-group-section").each(function () {
-		const visible = $(this).find(".itc-group-card:visible").length;
+
+	// Filter manager cards — show if manager matches OR has visible reports
+	$(".itc-manager-section").each(function () {
+		const $mgr = $(this).find(".itc-manager-card");
+		const mgr_text = $mgr.text().toLowerCase();
+		const $reports = $(this).find(".itc-employee-card:visible");
+		const show = mgr_text.includes(query) || $reports.length > 0;
+		$(this).toggle(show);
+
+		// Expand reports if searching
+		if (show) {
+			$(this).find(".itc-reports-list").removeClass("itc-collapsed");
+		}
+	});
+
+	// Filter unmanaged sections
+	$(".itc-unmanaged-section").each(function () {
+		const visible = $(this).find(".itc-employee-card:visible").length;
 		$(this).toggle(visible > 0);
 	});
 
-	// Tree view
-	$(".itc-node-card").each(function () {
-		const text = $(this).text().toLowerCase();
-		const $node = $(this).closest(".itc-tree-node");
-		if (text.includes(query)) {
-			$node.show();
-			$node.parents(".itc-tree-children").removeClass("itc-collapsed").show();
-			$node.parents(".itc-tree-node").show();
-		} else {
-			$node.hide();
+	// Filter department sections — show if has visible managers or unmanaged
+	$(".itc-dept-section").each(function () {
+		const header_text = $(this).find(".itc-dept-title").text().toLowerCase();
+		const has_visible_managers = $(this).find(".itc-manager-section:visible").length > 0;
+		const has_visible_unmanaged = $(this).find(".itc-unmanaged-section:visible").length > 0;
+		const show = header_text.includes(query) || has_visible_managers || has_visible_unmanaged;
+		$(this).toggle(show);
+
+		// Expand department if searching
+		if (show) {
+			$(this).find(".itc-dept-body").removeClass("itc-collapsed");
+			$(this).find(".itc-dept-toggle").removeClass("itc-rotated");
 		}
 	});
 };
