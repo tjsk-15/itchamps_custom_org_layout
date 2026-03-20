@@ -6,9 +6,8 @@ app_email = "tjs.kutnikar@gmail.com"
 app_license = "MIT"
 required_apps = ["frappe", "erpnext", "hrms"]
 
-# Load JS globally via app_include_js so it registers on_page_load
-# BEFORE the page actually loads. This overrides HRMS's own handler.
-# Do NOT also use page_js — that causes double execution.
-app_include_js = [
-    "/assets/itchamps_custom_org_layout/js/custom_org_chart.js"
-]
+# page_js runs AFTER the HRMS page's own JS has loaded.
+# Our script detects the page wrapper and rebuilds it immediately.
+page_js = {
+    "organizational-chart": "public/js/custom_org_chart.js"
+}
