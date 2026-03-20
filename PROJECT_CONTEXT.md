@@ -4,74 +4,78 @@
 
 ## What This App Does
 
-Overrides the HRMS Organizational Chart page with a **top-down tree** where each
-employee is a card. Manager → reportee relationships are shown with vertical and
-horizontal CSS connector lines. Cards show avatar, name, designation, department tag
-(colored), and branch tag. The tree is scrollable horizontally if wider than the viewport.
+Overrides the HRMS Organizational Chart page with a **top-down tree chart**.
+Each employee = a card (170px wide). Manager → reportee lines drawn via CSS
+pseudo-elements on nested `<ul>/<li>`. Cards show avatar, name, designation,
+department tag (colored), branch tag (gray). Collapse/expand via ± button.
 
-**Filters:** Department dropdown, Branch dropdown (no free-text search).
-Selecting a filter shows only matching employees plus their manager chain up to the root.
+**Filters:** Department dropdown + Branch dropdown in toolbar. No search field.
+When filtering, API walks up reports_to chain to keep tree connected.
 
-## Tech Stack
+## CRITICAL: Styles are INLINE in JS
 
-- Frappe v16, ERPNext v16, HRMS v16
-- Frappe Cloud: itchamps.m.frappe.cloud
-- Python >=3.10, setuptools via pyproject.toml (no setup.py/setup.cfg)
+All CSS is injected via `<style id="itc-org-styles">` in `custom_org_chart.js`.
+The external `.css` file is intentionally empty — Frappe Cloud wasn't loading it.
+If you need to change styles, edit the string array in the JS file.
 
 ## Directory Structure
 
 ```
-itchamps_custom_org_layout/               ← repo root
-├── pyproject.toml
+itchamps_custom_org_layout/
+├── pyproject.toml                        ← setuptools, no setup.py/cfg
 ├── MANIFEST.in / README.md / license.txt
-├── itchamps_custom_org_layout/           ← Python package
-│   ├── __init__.py                       ← __version__
+├── itchamps_custom_org_layout/
+│   ├── __init__.py
 │   ├── hooks.py
 │   ├── modules.txt                       ← "ITChamps Custom Org Layout"
 │   ├── patches.txt / patches/__init__.py
 │   ├── api/__init__.py
 │   ├── api/org_chart.py                  ← Server API
-│   ├── public/js/custom_org_chart.js     ← Client JS
-│   ├── public/css/custom_org_chart.css   ← Styles
-│   └── itchamps_custom_org_layout/__init__.py  ← Frappe module dir (must exist)
+│   ├── public/js/custom_org_chart.js     ← JS + ALL STYLES INLINE
+│   ├── public/css/custom_org_chart.css   ← Empty (styles in JS)
+│   └── itchamps_custom_org_layout/__init__.py
 ```
 
 ## API: `get_org_chart_data(company, department="", branch="")`
 
-Returns `{ employees: [...], filters: { departments: [...], branches: [...] } }`.
-Each employee: `{ id, name, designation, department, branch, reports_to, reports_to_name, image }`.
-When filters are active, the API walks up the reports_to chain to include ancestor managers
-so the tree stays connected.
+Returns:
+```json
+{
+  "employees": [{"id","name","designation","department","branch","reports_to","image"}, ...],
+  "departments": ["Dept1", "Dept2"],
+  "branches": ["Branch1", "Branch2"]
+}
+```
+Filters applied server-side. When filtered, ancestor managers added to keep tree connected.
 
 ## JS Architecture (custom_org_chart.js)
 
-- Namespace: `itchamps_org`
-- Overrides `frappe.pages["organizational-chart"].on_page_load`
-- Toolbar: Company (Link), Department (Select), Branch (Select) — no search field
-- Builds tree from flat employee list using `reports_to` → parent-child map → roots
-- Renders nested `<ul class="itc-level">` / `<li class="itc-node">` / `<div class="itc-card">`
-- Collapse/expand via `.itc-expand-btn` toggling `.itc-collapsed` on `<li>`
-- Click card → navigate to Employee doctype
+- IIFE wrapping everything
+- Injects `<style id="itc-org-styles">` on first load
+- Overrides `frappe.pages["organizational-chart"]`
+- Toolbar: Company (Link), Department (Select), Branch (Select)
+- `load()` → API call → `render()` builds tree from flat list
+- Tree: nested `<ul class="itc-tree">/<li>/<div class="itc-card">`
+- Connector lines: CSS `::before` (vertical) and `::after` (horizontal) on `<li>`
+- Collapse: `li.collapsed > ul { display:none }`, toggle button `.itc-toggle`
+- Click card → `frappe.set_route("app","employee", id)`
 
-## CSS Architecture (custom_org_chart.css)
+## CSS (all inside JS)
 
-- Tree uses nested `<ul>/<li>` flexbox layout (horizontal siblings, vertical parent-child)
-- Connector lines are pure CSS `::before` and `::after` pseudo-elements on `<li>` and `<ul>`
-- `.itc-card` — 180px wide card with colored top border, avatar, name, designation, tags
-- `.itc-expand-btn` — circular toggle button at card bottom
-- `.itc-collapsed > .itc-level` — hides children
-- Horizontal scroll via `.itc-tree-scroll { overflow-x: auto }`
-- Dark mode: `[data-theme="dark"]` overrides
+- `.itc-tree, .itc-tree ul` — flexbox horizontal layout
+- `li::before` — vertical line up, `li::after` — horizontal rail
+- `ul::before` — vertical line down from parent
+- `.itc-card` — 170px card, `.itc-av` — avatar circle
+- `.itc-tag-d` — dept tag (colored border), `.itc-tag-b` — branch tag (gray)
+- Dark mode via `[data-theme=dark]`
 
 ## hooks.py
 
-- `app_include_js`: `/assets/itchamps_custom_org_layout/js/custom_org_chart.js`
-- `app_include_css`: `/assets/itchamps_custom_org_layout/css/custom_org_chart.css`
-- `page_js["organizational-chart"]`: `public/js/custom_org_chart.js`
-- `required_apps`: frappe, erpnext, hrms
+- `app_include_js/css` — standard paths
+- `page_js["organizational-chart"]` — overrides HRMS page
+- `required_apps` — frappe, erpnext, hrms
 
-## Build Notes
+## Build
 
-- pyproject.toml uses setuptools. No setup.py/setup.cfg (deleted — caused conflicts).
-- Inner `itchamps_custom_org_layout/itchamps_custom_org_layout/__init__.py` must exist and be non-empty.
-- No requirements.txt (deleted — pyproject.toml has `dependencies = []`).
+- pyproject.toml + setuptools. No setup.py/cfg/requirements.txt.
+- Inner module dir must exist with non-empty `__init__.py`.
