@@ -1,8 +1,7 @@
 /**
  * ITChamps Custom Org Chart
- * Flat list with in-page department/branch filter dropdowns.
- * This script is loaded via page_js AFTER HRMS's own page JS.
- * It overrides the "show" event to replace HRMS's org chart entirely.
+ * Current Codebase 2 architecture (Frappe page override) +
+ * Nusrath 1 tree/hierarchy rendering (reports_to tree with depth-based palette).
  */
 
 (function () {
@@ -12,8 +11,10 @@ if (!document.getElementById("itc-styles")) {
 	var s = document.createElement("style");
 	s.id = "itc-styles";
 	s.textContent = `
-.itc-page { padding: 16px 16px 40px; max-width: 1000px; margin: 0 auto; }
+.itc-page { padding: 16px 16px 40px; margin: 0 auto; }
 .itc-empty { text-align: center; padding: 60px 20px; color: #718096; }
+
+/* ── Filter bar ── */
 .itc-filter-bar {
 	display: flex; gap: 10px; flex-wrap: wrap;
 	margin-bottom: 16px; align-items: center;
@@ -30,51 +31,56 @@ if (!document.getElementById("itc-styles")) {
 }
 .itc-select:focus { outline: none; border-color: #4C6EF5; box-shadow: 0 0 0 2px rgba(76,110,245,.15); }
 .itc-count { font-size: 12px; color: #718096; margin-left: auto; align-self: flex-end; padding-bottom: 4px; }
+
+/* ── Tree ── */
+.org-wrap { display: flex; justify-content: center; padding: 10px 0 30px; overflow-x: auto; }
+.org-node { display: inline-flex; flex-direction: column; align-items: center; }
 .itc-card {
-	display: flex; align-items: center; gap: 10px;
-	background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
-	padding: 10px 14px; margin-bottom: 6px; cursor: pointer;
-	position: relative; overflow: hidden;
-	transition: box-shadow .12s, border-color .12s;
+	border-radius: 8px; padding: 12px 18px; min-width: 130px; max-width: 190px;
+	text-align: center; cursor: pointer; border: 1.5px solid; box-sizing: border-box;
+	transition: filter .15s;
 }
-.itc-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.08); border-color: #4C6EF5; }
-.itc-bar { position:absolute; left:0; top:0; bottom:0; width:4px; }
-.itc-av {
-	width:38px; height:38px; border-radius:50%; flex-shrink:0;
-	display:flex; align-items:center; justify-content:center;
-	color:#fff; font-size:13px; font-weight:700; overflow:hidden;
+.itc-card:hover { filter: brightness(.93); }
+.org-card-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.org-card-info { font-size: 11px; line-height: 1.4; }
+.org-vline { width: 1px; height: 20px; background: #ccc; flex-shrink: 0; }
+.org-children { display: flex; }
+.org-child-wrap {
+	display: flex; flex-direction: column; align-items: center;
+	padding: 20px 12px 0; position: relative;
 }
-.itc-av img { width:100%; height:100%; object-fit:cover; }
-.itc-info { flex:1; min-width:0; }
-.itc-name { font-size:13px; font-weight:600; color:#1a202c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.itc-desg { font-size:11px; color:#718096; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.itc-tags { display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; }
-.itc-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:4px; white-space:nowrap; }
-.itc-td { color:#fff; }
-.itc-tb { background:#f1f3f5; color:#718096; border:1px solid #e2e8f0; }
-[data-theme=dark] .itc-card { background:#1a1a2e; border-color:#2d2d44; }
-[data-theme=dark] .itc-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.3); }
-[data-theme=dark] .itc-name { color:#e2e8f0; }
-[data-theme=dark] .itc-select { background-color:#1a1a2e; color:#e2e8f0; border-color:#2d2d44; }
-[data-theme=dark] .itc-tb { background:rgba(255,255,255,.08); }
+.org-child-wrap::before {
+	content: ''; position: absolute; top: 0; left: 0; right: 0;
+	height: 1px; background: #ccc;
+}
+.org-child-wrap:first-child::before { left: 50%; }
+.org-child-wrap:last-child::before  { right: 50%; }
+.org-child-wrap:only-child::before  { display: none; }
+.org-child-wrap::after {
+	content: ''; position: absolute; top: 0; left: 50%;
+	width: 1px; height: 20px; background: #ccc;
+}
 `;
 	document.head.appendChild(s);
 }
 
-// ── Colors ──
-var PAL = ["#4C6EF5","#E8590C","#0CA678","#E64980","#7950F2","#1098AD","#D6336C","#5C940D","#1C7ED6","#AE3EC9","#2B8A3E","#F59F00","#C92A2A","#087F5B","#845EF7"];
-var cm = {}, ci = 0;
-function dcol(d) {
-	if (!d) return "#868E96";
-	if (!cm[d]) cm[d] = PAL[ci++ % PAL.length];
-	return cm[d];
+// ── Depth-based palette (from Nusrath 1) ──
+var PALETTE = [
+	{ bg: '#ede9fc', bd: '#7c3aed', tx: '#5b21b6' },
+	{ bg: '#d1fae5', bd: '#059669', tx: '#065f46' },
+	{ bg: '#fee2e2', bd: '#dc2626', tx: '#991b1b' },
+	{ bg: '#dbeafe', bd: '#2563eb', tx: '#1e40af' },
+	{ bg: '#fef3c7', bd: '#d97706', tx: '#92400e' },
+	{ bg: '#fce7f3', bd: '#db2777', tx: '#9d174d' },
+];
+
+function paletteFor(depth, sibIdx) {
+	if (depth === 0) return PALETTE[0];
+	if (depth === 1) return PALETTE[1 + (sibIdx % (PALETTE.length - 1))];
+	return PALETTE[3];
 }
+
 function esc(s) { return frappe.utils.escape_html(s || ""); }
-function abr(n) {
-	if (!n) return "?";
-	var p = n.split(" ");
-	return p.length >= 2 ? (p[0][0]+p[p.length-1][0]).toUpperCase() : n.substring(0,2).toUpperCase();
-}
 
 // ────────────────────────────
 // OVERRIDE: Replace HRMS page
@@ -120,56 +126,41 @@ function itc_setup(wrapper) {
 		}
 	}
 
+	var pageHTML =
+		'<div class="itc-page" id="itc-page">' +
+		'<div class="itc-filter-bar" id="itc-filter-bar">' +
+		'<div class="itc-filter-wrap">' +
+		'<label>' + __("Department") + '</label>' +
+		'<select class="itc-select" id="itc-dept-sel"><option value="">' + __("All Departments") + '</option></select>' +
+		'</div>' +
+		'<div class="itc-filter-wrap">' +
+		'<label>' + __("Branch") + '</label>' +
+		'<select class="itc-select" id="itc-branch-sel"><option value="">' + __("All Branches") + '</option></select>' +
+		'</div>' +
+		'<span class="itc-count" id="itc-count"></span>' +
+		'</div>' +
+		'<div id="itc-list"><div class="itc-empty">' + __("Loading...") + '</div></div>' +
+		'</div>';
+
 	if (!wrapper._itc_filters_done) {
 		wrapper._itc_filters_done = true;
 
-		// Keep company in toolbar (needs Frappe Link autocomplete)
+		// Company selector in toolbar
 		page._co = page.add_field({
 			fieldname: "company", label: __("Company"), fieldtype: "Link",
 			options: "Company", default: frappe.defaults.get_default("company"), reqd: 1,
 			change: function () { doLoad(page); }
 		});
 
-		// Render page shell with in-body filter bar
-		$(page.body || page.main).html(
-			'<div class="itc-page" id="itc-page">' +
-			'<div class="itc-filter-bar" id="itc-filter-bar">' +
-			'<div class="itc-filter-wrap">' +
-			'<label>' + __("Department") + '</label>' +
-			'<select class="itc-select" id="itc-dept-sel"><option value="">' + __("All Departments") + '</option></select>' +
-			'</div>' +
-			'<div class="itc-filter-wrap">' +
-			'<label>' + __("Branch") + '</label>' +
-			'<select class="itc-select" id="itc-branch-sel"><option value="">' + __("All Branches") + '</option></select>' +
-			'</div>' +
-			'<span class="itc-count" id="itc-count"></span>' +
-			'</div>' +
-			'<div id="itc-list"><div class="itc-empty">' + __("Loading...") + '</div></div>' +
-			'</div>'
-		);
+		$(page.body || page.main).html(pageHTML);
 
-		// Filter change → client-side re-render (no extra API call)
+		// Filter change → re-render tree client-side
 		$(page.body || page.main).on("change", "#itc-dept-sel, #itc-branch-sel", function () {
-			applyFilters();
+			renderTree();
 		});
 	} else {
 		if (!document.getElementById("itc-page")) {
-			$(page.body || page.main).html(
-				'<div class="itc-page" id="itc-page">' +
-				'<div class="itc-filter-bar" id="itc-filter-bar">' +
-				'<div class="itc-filter-wrap">' +
-				'<label>' + __("Department") + '</label>' +
-				'<select class="itc-select" id="itc-dept-sel"><option value="">' + __("All Departments") + '</option></select>' +
-				'</div>' +
-				'<div class="itc-filter-wrap">' +
-				'<label>' + __("Branch") + '</label>' +
-				'<select class="itc-select" id="itc-branch-sel"><option value="">' + __("All Branches") + '</option></select>' +
-				'</div>' +
-				'<span class="itc-count" id="itc-count"></span>' +
-				'</div>' +
-				'<div id="itc-list"><div class="itc-empty">' + __("Loading...") + '</div></div>' +
-				'</div>'
-			);
+			$(page.body || page.main).html(pageHTML);
 		}
 	}
 
@@ -188,19 +179,17 @@ function doLoad(page) {
 		return;
 	}
 
-	cm = {}; ci = 0;
 	$("#itc-list").html('<div class="itc-empty">' + __("Loading...") + '</div>');
 
 	frappe.call({
-		method: "itchamps_custom_org_layout.api.org_chart.get_org_chart_data", // ← changed
+		method: "itchamps_custom_org_layout.api.org_chart.get_org_chart_data",
 		args: { company: co },
 		callback: function (r) {
 			if (!r.message) return;
 			_allEmps = r.message.employees || [];
-			_allEmps.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
 			populateDropdowns(r.message.departments || [], r.message.branches || []);
-			applyFilters();
+			renderTree();
 		},
 		error: function () {
 			$("#itc-list").html('<div class="itc-empty">' + __("Error loading data") + '</div>');
@@ -231,55 +220,100 @@ function populateDropdowns(depts, branches) {
 }
 
 // ────────────────────────────
-// APPLY FILTERS (client-side)
+// FILTER — preserves ancestor chain (from Nusrath 1)
 // ────────────────────────────
-function applyFilters() {
-	var dept = $("#itc-dept-sel").val() || "";
+function getFilteredEmps() {
+	var dept   = $("#itc-dept-sel").val()   || "";
 	var branch = $("#itc-branch-sel").val() || "";
+	if (!dept && !branch) return _allEmps;
 
-	var filtered = _allEmps.filter(function (e) {
-		return (!dept || e.department === dept) && (!branch || e.branch === branch);
+	var empMap = {};
+	_allEmps.forEach(function (e) { empMap[e.id] = e; });
+
+	var included = {};
+	function addWithAncestors(id) {
+		if (included[id]) return;
+		included[id] = true;
+		var e = empMap[id];
+		if (e && e.reports_to && empMap[e.reports_to]) addWithAncestors(e.reports_to);
+	}
+	_allEmps.forEach(function (e) {
+		if ((!dept || e.department === dept) && (!branch || e.branch === branch)) {
+			addWithAncestors(e.id);
+		}
 	});
+	return _allEmps.filter(function (e) { return included[e.id]; });
+}
 
-	var count = filtered.length;
-	$("#itc-count").text(count + " " + (count === 1 ? __("employee") : __("employees")));
+// ────────────────────────────
+// RENDER TREE (from Nusrath 1)
+// ────────────────────────────
+function renderTree() {
+	var el = document.getElementById("itc-list");
+	if (!el) return;
 
-	if (!filtered.length) {
-		$("#itc-list").html('<div class="itc-empty">' + __("No employees found") + '</div>');
+	var emps = getFilteredEmps();
+
+	// Update count
+	$("#itc-count").text(emps.length + " " + (emps.length === 1 ? __("employee") : __("employees")));
+
+	if (!emps || !emps.length) {
+		el.innerHTML = '<div class="itc-empty">' + __("No employees found") + '</div>';
 		return;
 	}
 
-	var html = '';
-	for (var i = 0; i < filtered.length; i++) html += cardH(filtered[i]);
-	$("#itc-list").html(html);
+	// Build tree map
+	var map = {}, i, e;
+	for (i = 0; i < emps.length; i++) { e = emps[i]; map[e.id] = { d: e, ch: [] }; }
+	var roots = [];
+	for (i = 0; i < emps.length; i++) {
+		e = emps[i];
+		if (e.reports_to && map[e.reports_to]) { map[e.reports_to].ch.push(map[e.id]); }
+		else { roots.push(map[e.id]); }
+	}
 
-	$("#itc-list").off("click", ".itc-card").on("click", ".itc-card", function () {
-		var id = $(this).data("id");
-		if (id) frappe.set_route("app", "employee", id);
+	// Sort children alphabetically
+	function srt(n) {
+		n.ch.sort(function (a, b) { return a.d.name.localeCompare(b.d.name); });
+		for (var j = 0; j < n.ch.length; j++) srt(n.ch[j]);
+	}
+	for (i = 0; i < roots.length; i++) srt(roots[i]);
+	roots.sort(function (a, b) { return a.d.name.localeCompare(b.d.name); });
+
+	// Render HTML
+	var html = '<div class="org-wrap">';
+	for (i = 0; i < roots.length; i++) html += nodeH(roots[i], 0, i);
+	html += '</div>';
+	el.innerHTML = html;
+
+	// Click → navigate to employee
+	el.addEventListener("click", function (ev) {
+		var card = ev.target.closest && ev.target.closest(".itc-card");
+		if (card && card.dataset.id) frappe.set_route("app", "employee", card.dataset.id);
 	});
 }
 
 // ────────────────────────────
-// CARD HTML
+// NODE HTML — recursive (from Nusrath 1)
 // ────────────────────────────
-function cardH(d) {
-	var col = dcol(d.department);
-	var av;
-	if (d.image) {
-		av = '<div class="itc-av"><img src="' + d.image + '"></div>';
-	} else {
-		av = '<div class="itc-av" style="background:' + col + '">' + abr(d.name) + '</div>';
-	}
-	var tags = '<div class="itc-tags">';
-	if (d.department) tags += '<span class="itc-tag itc-td" style="background:' + col + '">' + esc(d.department) + '</span>';
-	if (d.branch) tags += '<span class="itc-tag itc-tb">' + esc(d.branch) + '</span>';
-	tags += '</div>';
+function nodeH(node, depth, sibIdx) {
+	var d = node.d, kids = node.ch, c = paletteFor(depth, sibIdx);
+	var parts = [d.designation, d.department, d.branch].filter(function (v) { return !!v; });
 
-	var h = '<div class="itc-card" data-id="' + d.id + '">';
-	h += '<div class="itc-bar" style="background:' + col + '"></div>';
-	h += av;
-	h += '<div class="itc-info"><div class="itc-name">' + esc(d.name) + '</div>';
-	h += '<div class="itc-desg">' + esc(d.designation) + '</div>' + tags + '</div>';
+	var h = '<div class="org-node">';
+	h += '<div class="itc-card" data-id="' + esc(d.id) + '"'
+		+ ' style="background:' + c.bg + ';border-color:' + c.bd + ';color:' + c.tx + '">';
+	h += '<div class="org-card-name">' + esc(d.name) + '</div>';
+	if (parts.length) h += '<div class="org-card-info">' + esc(parts.join(" \u00b7 ")) + '</div>';
+	h += '</div>';
+
+	if (kids.length > 0) {
+		h += '<div class="org-vline"></div><div class="org-children">';
+		for (var j = 0; j < kids.length; j++) {
+			h += '<div class="org-child-wrap">' + nodeH(kids[j], depth + 1, j) + '</div>';
+		}
+		h += '</div>';
+	}
 	h += '</div>';
 	return h;
 }
