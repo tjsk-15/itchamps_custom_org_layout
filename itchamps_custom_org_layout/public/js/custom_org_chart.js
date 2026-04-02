@@ -57,6 +57,17 @@ if (!document.getElementById("itc-styles")) {
 [data-theme=dark] .itc-name { color:#e2e8f0; }
 [data-theme=dark] .itc-select { background-color:#1a1a2e; color:#e2e8f0; border-color:#2d2d44; }
 [data-theme=dark] .itc-tb { background:rgba(255,255,255,.08); }
+// for tree structure
+.org-wrap { display:flex; justify-content:center; padding:10px 0 30px; overflow-x:auto; }
+.org-node { display:inline-flex; flex-direction:column; align-items:center; }
+.org-vline { width:1px; height:20px; background:#ccc; flex-shrink:0; }
+.org-children { display:flex; }
+.org-child-wrap { display:flex; flex-direction:column; align-items:center; padding:20px 12px 0; position:relative; }
+.org-child-wrap::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:#ccc; }
+.org-child-wrap:first-child::before { left:50%; }
+.org-child-wrap:last-child::before { right:50%; }
+.org-child-wrap:only-child::before { display:none; }
+.org-child-wrap::after { content:''; position:absolute; top:0; left:50%; width:1px; height:20px; background:#ccc; }
 `;
 	document.head.appendChild(s);
 }
@@ -248,15 +259,43 @@ function applyFilters() {
 		$("#itc-list").html('<div class="itc-empty">' + __("No employees found") + '</div>');
 		return;
 	}
+	
+//  replace the flat card rendering with the tree. 
+	// var html = '';
+	// for (var i = 0; i < filtered.length; i++) html += cardH(filtered[i]);
+	// $("#itc-list").html(html);
 
-	var html = '';
-	for (var i = 0; i < filtered.length; i++) html += cardH(filtered[i]);
-	$("#itc-list").html(html);
+	// $("#itc-list").off("click", ".itc-card").on("click", ".itc-card", function () {
+	// 	var id = $(this).data("id");
+	// 	if (id) frappe.set_route("app", "employee", id);
+	// });
 
-	$("#itc-list").off("click", ".itc-card").on("click", ".itc-card", function () {
-		var id = $(this).data("id");
-		if (id) frappe.set_route("app", "employee", id);
-	});
+	// Build tree
+var map = {}, i, e;
+for (i = 0; i < filtered.length; i++) { e = filtered[i]; map[e.id] = { d: e, ch: [] }; }
+var roots = [];
+for (i = 0; i < filtered.length; i++) {
+    e = filtered[i];
+    if (e.reports_to && map[e.reports_to]) { map[e.reports_to].ch.push(map[e.id]); }
+    else { roots.push(map[e.id]); }
+}
+function srt(n) {
+    n.ch.sort(function (a, b) { return a.d.name.localeCompare(b.d.name); });
+    for (var j = 0; j < n.ch.length; j++) srt(n.ch[j]);
+}
+for (i = 0; i < roots.length; i++) srt(roots[i]);
+roots.sort(function (a, b) { return a.d.name.localeCompare(b.d.name); });
+
+var html = '<div class="org-wrap">';
+for (i = 0; i < roots.length; i++) html += nodeH(roots[i], 0);
+html += '</div>';
+$("#itc-list").html(html);
+
+$("#itc-list").off("click", ".itc-card").on("click", ".itc-card", function () {
+    var id = $(this).data("id");
+    if (id) frappe.set_route("app", "employee", id);
+});
+	// Tree structure ended
 }
 
 // ────────────────────────────
@@ -283,5 +322,24 @@ function cardH(d) {
 	h += '</div>';
 	return h;
 }
-
+// node module adding it here
+	function nodeH(node, depth) {
+    var d = node.d, kids = node.ch, col = dcol(d.department);
+    var parts = [d.designation, d.department, d.branch].filter(function (v) { return !!v; });
+    var h = '<div class="org-node">';
+    h += '<div class="itc-card" data-id="' + esc(d.id) + '"'
+        + ' style="border-left:4px solid ' + col + '">';
+    h += '<div class="itc-name">' + esc(d.name) + '</div>';
+    if (parts.length) h += '<div class="itc-desg">' + esc(parts.join(" · ")) + '</div>';
+    h += '</div>';
+    if (kids.length > 0) {
+        h += '<div class="org-vline"></div><div class="org-children">';
+        for (var j = 0; j < kids.length; j++)
+            h += '<div class="org-child-wrap">' + nodeH(kids[j], depth + 1) + '</div>';
+        h += '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+	// node module ending here
 })();
