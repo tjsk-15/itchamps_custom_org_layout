@@ -12,7 +12,7 @@ if (!document.getElementById("itc-styles")) {
 	var s = document.createElement("style");
 	s.id = "itc-styles";
 	s.textContent = `
-.itc-page { padding: 16px 16px 40px; max-width: 1000px; margin: 0 auto; }
+.itc-page { padding: 16px 16px 40px; max-width: 1000px; margin: 0 auto; overflow-x: auto; }
 .itc-empty { text-align: center; padding: 60px 20px; color: #718096; }
 .itc-filter-bar {
 	display: flex; gap: 10px; flex-wrap: wrap;
@@ -58,7 +58,7 @@ if (!document.getElementById("itc-styles")) {
 [data-theme=dark] .itc-select { background-color:#1a1a2e; color:#e2e8f0; border-color:#2d2d44; }
 [data-theme=dark] .itc-tb { background:rgba(255,255,255,.08); }
 // for tree structure
-.org-wrap { display:flex; justify-content:center; padding:10px 0 30px; overflow-x:auto; }
+.org-wrap { display:flex; justify-content:center; padding:10px 0 30px; overflow-x:auto; width:100%; min-width:max-content; }
 .org-node { display:inline-flex; flex-direction:column; align-items:center; }
 .org-vline { width:1px; height:20px; background:#ccc; flex-shrink:0; }
 .org-children { display:flex; }
